@@ -1,29 +1,18 @@
-FROM alpine:latest
-
-ENV CONFIG_JSON1=none CONFIG_JSON2=none UUID=91cb66ba-a373-43a0-8169-33d4eeaeb857 CONFIG_JSON3=none CERT_PEM=none KEY_PEM=none VER=3.5
-
-RUN apk add --no-cache --virtual .build-deps ca-certificates curl \
- && mkdir -m 777 /v2raybin \ 
- && cd /v2raybin \
- && curl -L -H "Cache-Control: no-cache" -o v2ray.zip https://github.com/v2ray/v2ray-core/releases/download/v$VER/v2ray-linux-64.zip \
- && unzip v2ray.zip \
- && mv /v2raybin/v2ray-v$VER-linux-64/v2ray /v2raybin/ \
- && mv /v2raybin/v2ray-v$VER-linux-64/v2ctl /v2raybin/ \
- && mv /v2raybin/v2ray-v$VER-linux-64/geoip.dat /v2raybin/ \
- && mv /v2raybin/v2ray-v$VER-linux-64/geosite.dat /v2raybin/ \
- && chmod +x /v2raybin/v2ray \
- && rm -rf v2ray.zip \
- && rm -rf v2ray-v$VER-linux-64 \
- && chgrp -R 0 /v2raybin \
- && chmod -R g+rwX /v2raybin 
- 
-ADD entrypoint.sh /entrypoint.sh
-
-RUN chmod +x /entrypoint.sh 
-
-#ENTRYPOINT /entrypoint.sh
-
-CMD /entrypoint.sh
-
-
-
+FROM nginx:1.9.12 MAINTAINER Jason Wilder mail@jasonwilder.com # Install wget and install/updates certificates RUN apt-get update \
+ && apt-get install -y -q --no-install-recommends \
+    ca-certificates \
+    wget \
+ && apt-get clean \
+ && rm -r /var/lib/apt/lists/*
+# Configure Nginx and apply fix for very long server names RUN echo "daemon off;" >> /etc/nginx/nginx.conf \
+ && sed -i 's/^http {/&\n    server_names_hash_bucket_size 128;/g' /etc/nginx/nginx.conf
+# Install Forego ADD https://github.com/jwilder/forego/releases/download/v0.16.1/forego /usr/local/bin/forego
+RUN chmod u+x /usr/local/bin/forego
+ENV DOCKER_GEN_VERSION 0.7.1 RUN wget https://github.com/jwilder/docker-gen/releases/download/$DOCKER_GEN_VERSION/docker-gen-linux-amd64-$DOCKER_GEN_VERSION.tar.gz \
+ && tar -C /usr/local/bin -xvzf docker-gen-linux-amd64-$DOCKER_GEN_VERSION.tar.gz \
+ && rm /docker-gen-linux-amd64-$DOCKER_GEN_VERSION.tar.gz
+COPY . /app/
+WORKDIR /app/
+ENV DOCKER_HOST unix:///tmp/docker.sock VOLUME ["/etc/nginx/certs"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
+CMD ["forego", "start", "-r"]
